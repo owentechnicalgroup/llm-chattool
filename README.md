@@ -31,7 +31,7 @@ A powerful Python-based desktop application for interacting with Large Language 
 
 1. Clone the repository:
 ```bash
-git clone [repository-url]
+git clone https://github.com/owenmarkb/llm-chattool.git
 cd llm-chattool
 ```
 
