@@ -1,0 +1,8 @@
+langchain
+langchain-community
+python-dotenv
+langsmith
+unstructured
+docx2txt
+python-docx
+reportlab
