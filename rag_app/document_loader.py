@@ -2,6 +2,7 @@ import os
 import shutil
 from dotenv import load_dotenv
 from langchain_community.document_loaders import TextLoader, Docx2txtLoader, PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langsmith import Client
 import logging
 import glob
@@ -19,6 +20,12 @@ class DocumentLoader:
         self.data_dir = data_dir
         self.completed_dir = os.path.join(data_dir, "completed")
         self.langsmith_client = Client()
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=200,
+            chunk_overlap=20,
+            length_function=len,
+            separators=[". ", ".\n", "? ", "! ", "\n\n", "\n", " ", ""]
+        )
         
         # Ensure completed directory exists
         if not os.path.exists(self.completed_dir):
@@ -26,11 +33,14 @@ class DocumentLoader:
         
     def move_to_completed(self, file_path):
         """Move a processed file to the completed directory."""
-        filename = os.path.basename(file_path)
-        destination = os.path.join(self.completed_dir, filename)
-        shutil.move(file_path, destination)
-        logger.info(f"Moved {filename} to completed folder")
-        
+        try:
+            filename = os.path.basename(file_path)
+            destination = os.path.join(self.completed_dir, filename)
+            shutil.move(file_path, destination)
+            logger.info(f"Moved {filename} to completed folder")
+        except Exception as e:
+            logger.error(f"Error moving file {file_path} to completed folder: {str(e)}")
+            
     def get_appropriate_loader(self, file_path):
         """Get the appropriate loader based on file extension."""
         _, ext = os.path.splitext(file_path)
@@ -43,55 +53,109 @@ class DocumentLoader:
         else:
             raise ValueError(f"Unsupported file type: {ext}")
         
+    def split_text(self, document):
+        """Split document into chunks."""
+        if not document.page_content or len(document.page_content.strip()) == 0:
+            logger.warning("Empty document content, skipping text splitting")
+            return []
+        return self.text_splitter.split_documents([document])
+        
+    def process_document(self, doc, file_path):
+        """Process a single document."""
+        try:
+            char_count = len(doc.page_content)
+            if char_count == 0:
+                logger.warning(f"Empty document content in {file_path}")
+                return []
+                
+            logger.info(f"Processing document: {file_path}")
+            logger.info(f"Document characters: {char_count}")
+            print(f"\nOriginal Document Content:\n{'-' * 80}\n{doc.page_content}\n{'-' * 80}")
+            
+            # Split the document into chunks
+            doc_chunks = self.split_text(doc)
+            
+            if doc_chunks:
+                # Print chunks with character counts
+                print(f"\nDocument Chunks ({len(doc_chunks)}):")
+                for i, chunk in enumerate(doc_chunks, 1):
+                    chunk_chars = len(chunk.page_content)
+                    print(f"\nChunk {i} ({chunk_chars} characters):")
+                    print("-" * 40)
+                    print(chunk.page_content.strip())
+                    print("-" * 40)
+                
+                # Log to LangSmith
+                try:
+                    avg_chunk_size = sum(len(c.page_content) for c in doc_chunks) / len(doc_chunks)
+                    self.langsmith_client.create_run(
+                        name="document_loading",
+                        run_type="chain",
+                        inputs={"file_path": file_path},
+                        outputs={
+                            "char_count": char_count,
+                            "content_preview": doc.page_content[:100] + "...",
+                            "num_chunks": len(doc_chunks),
+                            "avg_chunk_size": avg_chunk_size
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"Error logging to LangSmith: {str(e)}")
+            
+            return doc_chunks
+        except Exception as e:
+            logger.error(f"Error processing document {file_path}: {str(e)}")
+            return []
+        
     def load_documents(self):
         """Load all documents from the data directory."""
         try:
             documents = []
+            chunks = []
+            
             # Get all supported files in the data directory (excluding completed folder)
             files = [f for f in glob.glob(os.path.join(self.data_dir, "*.*")) 
                     if f.lower().endswith(('.txt', '.doc', '.docx', '.pdf')) and 
                     not f.startswith(self.completed_dir)]
+            
+            if not files:
+                logger.info("No files found to process")
+                return [], []
             
             for file_path in files:
                 try:
                     # Get appropriate loader for the file type
                     loader = self.get_appropriate_loader(file_path)
                     # Load the document(s)
-                    # Note: PDF loader might return multiple documents (one per page)
                     docs = loader.load()
                     
-                    for doc in docs:
-                        char_count = len(doc.page_content)
-                        logger.info(f"Loaded document: {file_path}")
-                        logger.info(f"Document characters: {char_count}")
-                        print(f"\nDocument Content:\n{doc.page_content}")
-                        
-                        # Log to LangSmith
-                        self.langsmith_client.create_run(
-                            name="document_loading",
-                            run_type="chain",  # Required run_type parameter
-                            inputs={"file_path": file_path},
-                            outputs={
-                                "char_count": char_count,
-                                "content_preview": doc.page_content[:100] + "..."
-                            }
-                        )
-                        
-                        documents.append(doc)
+                    if not docs:
+                        logger.warning(f"No content loaded from {file_path}")
+                        continue
                     
-                    # Move the processed file to completed folder
-                    self.move_to_completed(file_path)
+                    file_chunks = []
+                    for doc in docs:
+                        doc_chunks = self.process_document(doc, file_path)
+                        if doc_chunks:
+                            file_chunks.extend(doc_chunks)
+                            documents.append(doc)
+                    
+                    if file_chunks:
+                        chunks.extend(file_chunks)
+                        # Only move file if processing was successful
+                        self.move_to_completed(file_path)
                     
                 except Exception as e:
                     logger.error(f"Error processing file {file_path}: {str(e)}")
                     continue
             
-            logger.info(f"Loaded {len(documents)} documents")
-            return documents
+            logger.info(f"Successfully loaded {len(documents)} documents")
+            logger.info(f"Created {len(chunks)} total chunks")
+            return documents, chunks
             
         except Exception as e:
-            logger.error(f"Error loading documents: {str(e)}")
-            raise
+            logger.error(f"Error in load_documents: {str(e)}")
+            return [], []
 
 if __name__ == "__main__":
     doc_loader = DocumentLoader()

@@ -1,6 +1,6 @@
 # RAG Document Loader
 
-A Python-based document loader implementation for RAG (Retrieval-Augmented Generation) systems. This application serves as the first component of a two-part RAG implementation, focusing on document loading and processing.
+A Python-based document loader implementation for RAG (Retrieval-Augmented Generation) systems. This application serves as the first component of a two-part RAG implementation, focusing on document loading, processing, and text splitting.
 
 ## Features
 
@@ -17,11 +17,20 @@ A Python-based document loader implementation for RAG (Retrieval-Augmented Gener
 - Multi-page PDF handling
 - Automatic file organization (moves processed files to completed folder)
 
+### Text Splitting
+- Recursive character text splitting
+- Configurable chunk sizes (default: 500 characters)
+- Adjustable chunk overlap (default: 50 characters)
+- Smart separator handling (\n\n, \n, ., space)
+- Chunk statistics and visualization
+- Maintains context across chunks
+
 ### Logging and Monitoring
 - Integration with LangSmith for activity tracking
 - Detailed console logging
 - Processing statistics
 - Error handling and reporting
+- Chunk analytics (count, size, distribution)
 
 ## Project Structure
 
@@ -87,9 +96,30 @@ rag_app/
    ```
 
 3. Monitor the output:
-   - Console will display processing status
-   - Check LangSmith dashboard for detailed logs
-   - Processed files move to data/completed directory
+   - Original document content
+   - Generated text chunks with character counts
+   - Processing statistics
+   - LangSmith dashboard logs
+   - Processed files in data/completed directory
+
+## Text Splitting Configuration
+
+The text splitter can be configured by modifying the following parameters in `document_loader.py`:
+
+```python
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=500,      # Maximum characters per chunk
+    chunk_overlap=50,    # Overlap between chunks
+    length_function=len, # Function to measure text length
+    separators=[         # Text separation hierarchy
+        "\n\n",         # Prefer splitting on double newlines
+        "\n",           # Then single newlines
+        ".",            # Then periods
+        " ",           # Then spaces
+        ""             # Finally, character by character
+    ]
+)
+```
 
 ## Testing
 
@@ -109,11 +139,11 @@ The application uses environment variables for configuration:
 ## Future Enhancements
 
 This is part one of a two-part RAG implementation. Future components will include:
-1. Text splitting functionality
-2. Vector storage integration
-3. Additional document format support
-4. Enhanced metadata extraction
-5. Customizable processing pipelines
+1. Vector storage integration
+2. Additional document format support
+3. Enhanced metadata extraction
+4. Customizable processing pipelines
+5. Advanced chunk optimization strategies
 
 ## Contributing
 
