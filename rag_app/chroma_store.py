@@ -1,4 +1,5 @@
 import os
+import time
 import chromadb
 from chromadb.config import Settings
 import logging
@@ -29,7 +30,7 @@ class ChromaStore:
         # Create or get the collection
         self.collection = self.client.get_or_create_collection(
             name="documents",
-            metadata={"hnsw:space": "cosine"}
+            metadata={"hnsw:space": "cosine"}  # Using default embedding function
         )
         
         logger.info(f"Initialized ChromaStore with persistence at {persist_directory}")
@@ -60,8 +61,8 @@ class ChromaStore:
                 metadata['doc_id'] = str(i)
                 metadatas.append(metadata)
                 
-                # Generate unique ID
-                ids.append(f"doc_{i}")
+                # Generate unique ID using timestamp and index
+                ids.append(f"doc_{int(time.time())}_{i}")
             
             # Add documents to collection
             self.collection.add(
@@ -76,37 +77,53 @@ class ChromaStore:
             logger.error(f"Error adding documents to Chroma: {str(e)}")
             raise
             
-    def query_documents(self, query_text: str, n_results: int = 3) -> List[Dict[str, Any]]:
+    def query_documents(self, query_text: str, n_results: int = 3, include_fields: List[str] = None) -> List[Dict[str, Any]]:
         """
         Query the Chroma database for similar documents.
         
         Args:
             query_text: Text to search for
             n_results: Number of results to return
+            include_fields: List of fields to include in results ('documents', 'metadatas', 'embeddings')
             
         Returns:
             List of dictionaries containing matched documents and their metadata
         """
         try:
+            # Prepare query parameters
+            include = include_fields if include_fields else ["documents", "metadatas"]
+            
             # Query the collection
             results = self.collection.query(
                 query_texts=[query_text],
-                n_results=n_results
+                n_results=n_results,
+                include=include + ["embeddings", "distances"]
             )
             
             # Format results
             formatted_results = []
-            if results['documents']:
-                for doc, metadata, distance in zip(
-                    results['documents'][0],
-                    results['metadatas'][0],
-                    results['distances'][0]
-                ):
-                    formatted_results.append({
-                        'content': doc,
-                        'metadata': metadata,
-                        'similarity': 1 - distance  # Convert distance to similarity score
-                    })
+            if results:
+                n = len(results.get('distances', [[]])[0]) if results.get('distances') else 0
+                for i in range(n):
+                    result = {}
+                    
+                    # Add documents if included
+                    if 'documents' in include and results.get('documents'):
+                        result['content'] = results['documents'][0][i]
+                    
+                    # Add metadata if included
+                    if 'metadatas' in include and results.get('metadatas'):
+                        result['metadata'] = results['metadatas'][0][i]
+                    
+                    # Add embeddings if included
+                    if 'embeddings' in include and results.get('embeddings'):
+                        result['embedding'] = results['embeddings'][0][i]
+                    
+                    # Always include similarity score if distances are available
+                    if results.get('distances'):
+                        result['similarity'] = 1 - results['distances'][0][i]
+                    
+                    formatted_results.append(result)
                     
             logger.info(f"Found {len(formatted_results)} matching documents")
             return formatted_results

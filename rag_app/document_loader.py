@@ -175,14 +175,8 @@ class DocumentLoader:
             
             logger.info(f"Successfully loaded {len(documents)} documents")
             logger.info(f"Created {len(chunks)} total chunks")
-            # Add chunks to Chroma if any were created
-            if chunks:
-                try:
-                    self.chroma_store.add_documents(chunks)
-                    stats = self.chroma_store.get_collection_stats()
-                    logger.info(f"Chroma collection now has {stats['total_documents']} total documents")
-                except Exception as e:
-                    logger.error(f"Error adding documents to Chroma: {str(e)}")
+            # Return the documents and chunks without adding to Chroma
+            # (test_query.py will handle adding to Chroma after clearing the collection)
             
             return documents, chunks
             
