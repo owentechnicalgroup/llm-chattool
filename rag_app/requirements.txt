@@ -6,3 +6,5 @@ unstructured
 docx2txt
 python-docx
 reportlab
+chromadb
+streamlit

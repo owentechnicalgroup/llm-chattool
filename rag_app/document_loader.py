@@ -6,6 +6,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langsmith import Client
 import logging
 import glob
+from chroma_store import ChromaStore
 
 # Load environment variables
 load_dotenv()
@@ -26,6 +27,10 @@ class DocumentLoader:
             length_function=len,
             separators=[". ", ".\n", "? ", "! ", "\n\n", "\n", " ", ""]
         )
+        
+        # Initialize Chroma store with absolute path
+        chroma_db_path = os.path.abspath(os.path.join(data_dir, "chroma_db"))
+        self.chroma_store = ChromaStore(persist_directory=chroma_db_path)
         
         # Ensure completed directory exists
         if not os.path.exists(self.completed_dir):
@@ -113,10 +118,29 @@ class DocumentLoader:
             documents = []
             chunks = []
             
-            # Get all supported files in the data directory (excluding completed folder)
-            files = [f for f in glob.glob(os.path.join(self.data_dir, "*.*")) 
-                    if f.lower().endswith(('.txt', '.doc', '.docx', '.pdf')) and 
-                    not f.startswith(self.completed_dir)]
+            # Get all supported files in the data directory
+            files = []
+            
+            # Check main data directory
+            main_dir_files = [f for f in glob.glob(os.path.join(self.data_dir, "*.*")) 
+                            if f.lower().endswith(('.txt', '.doc', '.docx', '.pdf')) and 
+                            not os.path.dirname(f).endswith('completed')]
+            files.extend(main_dir_files)
+            
+            # Check completed directory and move files back if needed
+            completed_files = [f for f in glob.glob(os.path.join(self.completed_dir, "*.*"))
+                             if f.lower().endswith(('.txt', '.doc', '.docx', '.pdf'))]
+            
+            # Move completed files back to main directory for reprocessing
+            for completed_file in completed_files:
+                try:
+                    filename = os.path.basename(completed_file)
+                    destination = os.path.join(self.data_dir, filename)
+                    shutil.move(completed_file, destination)
+                    files.append(destination)
+                    logger.info(f"Moved {filename} back for reprocessing")
+                except Exception as e:
+                    logger.error(f"Error moving file back for reprocessing: {str(e)}")
             
             if not files:
                 logger.info("No files found to process")
@@ -151,12 +175,25 @@ class DocumentLoader:
             
             logger.info(f"Successfully loaded {len(documents)} documents")
             logger.info(f"Created {len(chunks)} total chunks")
+            # Add chunks to Chroma if any were created
+            if chunks:
+                try:
+                    self.chroma_store.add_documents(chunks)
+                    stats = self.chroma_store.get_collection_stats()
+                    logger.info(f"Chroma collection now has {stats['total_documents']} total documents")
+                except Exception as e:
+                    logger.error(f"Error adding documents to Chroma: {str(e)}")
+            
             return documents, chunks
             
         except Exception as e:
             logger.error(f"Error in load_documents: {str(e)}")
             return [], []
-
-if __name__ == "__main__":
-    doc_loader = DocumentLoader()
-    doc_loader.load_documents()
+            
+    def query_similar_chunks(self, query_text: str, n_results: int = 3):
+        """Query Chroma for similar chunks of text."""
+        try:
+            return self.chroma_store.query_documents(query_text, n_results)
+        except Exception as e:
+            logger.error(f"Error querying similar chunks: {str(e)}")
+            return []
