@@ -4,14 +4,19 @@ from models.chat_model import ChatModel
 from models.screen_model import ScreenModel
 from models.model_settings import ModelSettings
 from models.display_model import DisplayModel
+from models.rag_model import RagModel
 
 def init_models():
     """Initialize all model instances."""
-    chat_model = ChatModel()
+    rag_model = RagModel()
+    if not rag_model.initialize_rag():
+        st.warning("RAG functionality may be limited - failed to initialize RAG database")
+        
+    chat_model = ChatModel(rag_model=rag_model)
     screen_model = ScreenModel()
     model_settings = ModelSettings()
     display_model = DisplayModel()
-    return chat_model, screen_model, model_settings, display_model
+    return chat_model, screen_model, model_settings, display_model, rag_model
 
 def main():
     load_dotenv()
@@ -19,10 +24,10 @@ def main():
     st.title("AI Chat Interface")
     
     # Initialize all models
-    chat_model, screen_model, model_settings, display_model = init_models()
+    chat_model, screen_model, model_settings, display_model, rag_model = init_models()
     
     # Set up sidebar with status and model selection
-    sidebar, status_container = display_model.setup_sidebar()
+    sidebar, status_container, rag_container = display_model.setup_sidebar()
     available_models = model_settings.get_available_models()
     selected_model, switch_model = display_model.display_model_selection(
         available_models,
@@ -56,11 +61,15 @@ def main():
             display_model.display_info("Please select and load a model from the sidebar to begin.")
             return
         
+        # Set up RAG controls
+        display_model.setup_rag_controls(rag_container, rag_model)
+        
         # Update status in sidebar
         display_model.update_status(
             status_container,
             st.session_state.last_model,
-            screen_model.get_current_url()
+            screen_model.get_current_url(),
+            rag_model.is_enabled()
         )
         
         # Display chat messages
