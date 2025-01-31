@@ -20,7 +20,9 @@ A powerful Python-based desktop application for interacting with Large Language 
   - Dynamic model switching through sidebar
   - Real-time status updates
   - RAG controls and configuration
-- **Session Management**: Persistent chat history within sessions
+- **Session Management**: 
+  - Persistent chat history within sessions
+  - Automatic chat history clearing when switching models
 - **Modular Architecture**: Well-organized codebase with separate models for different functionalities
 
 ## Requirements
@@ -116,7 +118,7 @@ streamlit run llmapp.py
 ### Chat Interface
 - Real-time streaming responses
 - Persistent chat history within sessions
-- Dynamic model switching
+- Dynamic model switching with automatic chat history clearing
 - Error handling and user feedback
 
 ### RAG Integration
