@@ -1,6 +1,6 @@
 # LLM ChatTool
 
-A powerful Python-based desktop application for interacting with Large Language Models (LLMs). This tool provides a streamlined interface for managing conversations with AI models while offering advanced features like RAG (Retrieval-Augmented Generation), webpage context integration, and streaming responses.
+A Python-based desktop application for interacting with Large Language Models (LLMs). This tool provides a streamlit interface for managing conversations with AI models while offering advanced features like RAG (Retrieval-Augmented Generation), webpage context integration, and streaming responses.
 
 ## Features
 
